@@ -32,7 +32,7 @@ VITE_AMAP_KEY=your_amap_web_jsapi_key
 VITE_AMAP_SECURITY_JS_CODE=your_amap_security_js_code
 ```
 
-不要把真实 Key 提交到仓库。公开站点建议在高德开放平台配置域名白名单。
+不要把真实 Key 提交到仓库。使用github pages可以在Actions secrets and variables的Repository secrets中添加VITE_AMAP_KEY与VITE_AMAP_SECURITY_JS_CODE。公开站点建议在高德开放平台配置域名白名单。
 
 ## Valaxy 使用方式
 
