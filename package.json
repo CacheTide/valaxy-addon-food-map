@@ -1,0 +1,64 @@
+{
+  "name": "valaxy-addon-food-map",
+  "version": "0.1.0",
+  "type": "module",
+  "private": false,
+  "description": "Food map addon for Valaxy with shared JSON aggregation.",
+  "author": "CacheTide",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/CacheTide/valaxy-addon-food-map.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CacheTide/valaxy-addon-food-map/issues"
+  },
+  "homepage": "https://github.com/CacheTide/valaxy-addon-food-map#readme",
+  "keywords": [
+    "valaxy",
+    "valaxy-addon",
+    "food-map",
+    "map",
+    "amap"
+  ],
+  "main": "./index.ts",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.ts"
+    },
+    "./client": {
+      "types": "./client/index.ts",
+      "default": "./client/index.ts"
+    },
+    "./types": {
+      "types": "./types/index.ts",
+      "default": "./types/index.ts"
+    }
+  },
+  "files": [
+    "client",
+    "components",
+    "examples",
+    "node",
+    "types",
+    "index.d.ts",
+    "index.ts",
+    "valaxy.config.ts",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "fast-glob": "^3.3.3",
+    "gray-matter": "^4.0.3"
+  },
+  "peerDependencies": {
+    "valaxy": ">=0.27.0 <0.29.0",
+    "vue": "^3.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "https://valaxy.site/schemas/food-map.v1.json",
+  "schemaVersion": 1,
+  "generator": {
+    "name": "valaxy-addon-food-map",
+    "version": "0.1.0"
+  },
+  "owner": {
+    "id": "demo-blog",
+    "name": "Demo Blog",
+    "url": "https://example.com"
+  },
+  "site": {
+    "title": "Demo Food Blog",
+    "url": "https://example.com",
+    "homepage": "https://example.com"
+  },
+  "generatedAt": "2026-04-28T00:00:00.000Z",
+  "coordinateSystem": "GCJ-02",
+  "spots": [
+    {
+      "id": "demo-shanghai-coffee",
+      "name": "Wutong Road Coffee",
+      "city": "Shanghai",
+      "address": "Shanghai Xuhui District",
+      "lng": 121.44418,
+      "lat": 31.20931,
+      "coordinateSystem": "GCJ-02",
+      "category": "Coffee",
+      "price": 68,
+      "rating": 4.6,
+      "recommend": [
+        "Dirty",
+        "Basque cheesecake"
+      ],
+      "articleUrl": "https://example.com/posts/shanghai-coffee/",
+      "amapUrl": "https://uri.amap.com/marker?position=121.44418,31.20931&name=Wutong%20Road%20Coffee",
+      "source": {
+        "id": "demo-blog",
+        "name": "Demo Food Blog",
+        "homepage": "https://example.com",
+        "jsonUrl": "https://example.com/food-map/index.json",
+        "type": "local"
+      }
+    }
+  ]
+}
