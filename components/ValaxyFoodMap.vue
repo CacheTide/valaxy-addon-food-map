@@ -802,6 +802,13 @@ function resolveHref(value: string) {
 .food-map__active-card {
   margin-bottom: 0 !important;
   margin-inline: 0 !important;
+  transform: none !important;
+}
+
+.food-map__filters:hover,
+.food-map__body:hover,
+.food-map__active-card:hover {
+  transform: none !important;
 }
 
 .food-map__eyebrow {
@@ -904,6 +911,7 @@ function resolveHref(value: string) {
 }
 
 .food-map__list {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -918,6 +926,8 @@ function resolveHref(value: string) {
 }
 
 .food-map__list-item {
+  appearance: none;
+  -webkit-appearance: none;
   position: relative;
   border: 1px solid color-mix(in oklab, var(--food-map-border) 72%, transparent);
   border-radius: var(--food-map-inner-radius);
@@ -927,12 +937,14 @@ function resolveHref(value: string) {
   color: inherit;
   cursor: pointer;
   text-align: left;
-  backdrop-filter: blur(10px) saturate(130%);
-  -webkit-backdrop-filter: blur(10px) saturate(130%);
-  backface-visibility: hidden;
-  isolation: isolate;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  backface-visibility: visible;
+  isolation: auto;
   transform: none;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  will-change: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .food-map__list-item:hover,
@@ -940,7 +952,7 @@ function resolveHref(value: string) {
   border-color: color-mix(in oklab, var(--va-c-primary, #f97316) 60%, transparent);
   background: color-mix(in oklab, var(--va-c-primary, #f97316) 10%, transparent);
   box-shadow: 0 14px 28px -22px var(--va-c-primary, #f97316);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .food-map__list-title {
@@ -1321,14 +1333,15 @@ function resolveHref(value: string) {
     padding: 0.85rem;
     overscroll-behavior-x: contain;
     scroll-padding-inline: 0.85rem;
-    scroll-snap-type: x mandatory;
+    scroll-snap-type: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .food-map__list-item {
     flex: 0 0 min(78vw, 19rem);
-    scroll-snap-align: start;
+    scroll-snap-align: none;
     transform: none;
-    will-change: auto;
   }
 
   .food-map__list-item:hover,
