@@ -915,8 +915,6 @@ function resolveHref(value: string) {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--va-c-primary, #f97316) 35%, transparent) transparent;
-  transform: translateZ(0);
-  will-change: scroll-position;
 }
 
 .food-map__list-item {
@@ -933,8 +931,7 @@ function resolveHref(value: string) {
   -webkit-backdrop-filter: blur(10px) saturate(130%);
   backface-visibility: hidden;
   isolation: isolate;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
+  transform: none;
   transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
@@ -943,7 +940,7 @@ function resolveHref(value: string) {
   border-color: color-mix(in oklab, var(--va-c-primary, #f97316) 60%, transparent);
   background: color-mix(in oklab, var(--va-c-primary, #f97316) 10%, transparent);
   box-shadow: 0 14px 28px -22px var(--va-c-primary, #f97316);
-  transform: translate3d(0, -1px, 0);
+  transform: translateY(-1px);
 }
 
 .food-map__list-title {
@@ -1330,6 +1327,13 @@ function resolveHref(value: string) {
   .food-map__list-item {
     flex: 0 0 min(78vw, 19rem);
     scroll-snap-align: start;
+    transform: none;
+    will-change: auto;
+  }
+
+  .food-map__list-item:hover,
+  .food-map__list-item.is-active {
+    transform: none;
   }
 
   .food-map__map-card,
