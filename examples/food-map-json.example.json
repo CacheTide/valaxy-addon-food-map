@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.7"
+    "version": "0.1.8"
   },
   "owner": {
     "id": "demo-blog",

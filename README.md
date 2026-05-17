@@ -185,7 +185,7 @@ If no `food.visit` or `food.visits` is provided, the spot is still shown, but no
 Set top-level `noindex: true` in a post's FrontMatter to add:
 
 ```html
-<meta name="robots" content="noindex, follow">
+<meta name="robots" content="noindex, nofollow">
 ```
 
 This is useful for short food notes that should still appear in your site and food map, but should not be indexed by search engines.
@@ -216,7 +216,7 @@ See also: [examples/food-map-json.example.json](./examples/food-map-json.example
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.7"
+    "version": "0.1.8"
   },
   "owner": {
     "id": "demo-blog",

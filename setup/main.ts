@@ -13,7 +13,7 @@ export default defineAppSetup(({ app, router }) => {
         ? [
             {
               name: 'robots',
-              content: 'noindex, follow',
+              content: 'noindex, nofollow',
             },
           ]
         : [],

@@ -185,7 +185,7 @@ food:
 在文章 FrontMatter 顶层添加 `noindex: true`，插件会为该页面添加：
 
 ```html
-<meta name="robots" content="noindex, follow">
+<meta name="robots" content="noindex, nofollow">
 ```
 
 这适合内容较短、希望继续在站内和美食地图展示，但不希望被搜索引擎索引的美食记录。
@@ -216,7 +216,7 @@ food:
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.7"
+    "version": "0.1.8"
   },
   "generatedAt": "2026-04-28T00:00:00.000Z",
   "coordinateSystem": "GCJ-02",
