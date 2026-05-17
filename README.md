@@ -216,7 +216,7 @@ See also: [examples/food-map-json.example.json](./examples/food-map-json.example
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.6"
+    "version": "0.1.7"
   },
   "owner": {
     "id": "demo-blog",

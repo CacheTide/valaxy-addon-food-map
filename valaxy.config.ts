@@ -12,7 +12,7 @@ export default defineValaxyConfig({
       alias: [
         {
           find: /^@unhead\/vue$/,
-          replacement: toViteFsPath(requireFromValaxy.resolve('@unhead/vue')),
+          replacement: requireFromValaxy.resolve('@unhead/vue'),
         },
       ],
     },

@@ -216,7 +216,7 @@ food:
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.6"
+    "version": "0.1.7"
   },
   "generatedAt": "2026-04-28T00:00:00.000Z",
   "coordinateSystem": "GCJ-02",
