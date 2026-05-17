@@ -17,7 +17,7 @@ export const FOOD_MAP_SCHEMA_VERSION = 1
 export const FOOD_MAP_GENERATOR = 'valaxy-addon-food-map'
 export const FOOD_MAP_GENERATOR_INFO: FoodMapJsonGenerator = {
   name: FOOD_MAP_GENERATOR,
-  version: '0.1.5',
+  version: '0.1.6',
 }
 export const FOOD_MAP_COORDINATE_SYSTEM = 'GCJ-02'
 

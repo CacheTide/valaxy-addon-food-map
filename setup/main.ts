@@ -1,17 +1,15 @@
 import { useHead } from '@unhead/vue'
 import { computed } from 'vue'
-import { defineAppSetup, useFrontmatter } from 'valaxy'
+import { defineAppSetup } from 'valaxy'
 
 interface FoodMapNoindexFrontMatter {
   noindex?: boolean | 'true' | 'false'
 }
 
-export default defineAppSetup(({ app }) => {
+export default defineAppSetup(({ app, router }) => {
   app.runWithContext(() => {
-    const frontmatter = useFrontmatter<FoodMapNoindexFrontMatter>()
-
     useHead(computed(() => ({
-      meta: isNoindexEnabled(frontmatter.value.noindex)
+      meta: isNoindexEnabled(getRouteFrontmatter(router).noindex)
         ? [
             {
               name: 'robots',
@@ -22,6 +20,10 @@ export default defineAppSetup(({ app }) => {
     })))
   })
 })
+
+function getRouteFrontmatter(router: { currentRoute?: { value?: { meta?: { frontmatter?: FoodMapNoindexFrontMatter } } } }) {
+  return router.currentRoute?.value?.meta?.frontmatter || {}
+}
 
 function isNoindexEnabled(value: FoodMapNoindexFrontMatter['noindex']) {
   return value === true || value === 'true'
