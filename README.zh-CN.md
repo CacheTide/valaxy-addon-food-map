@@ -15,6 +15,7 @@
 - 从 Valaxy 的 `usePageList()` 和文章 FrontMatter 自动读取本地店铺。
 - 使用 `food.spotId` 合并同一家店的多篇文章。
 - 本站可显示 `food.visit` / `food.visits` 生成的探店时间线。
+- 文章 FrontMatter 设置 `noindex: true` 时自动添加搜索引擎 noindex 标记。
 - 构建时导出 `/food-map/index.json`。
 - 通过 `sources[]` 聚合其他站点的美食地图 JSON。
 - 共享 JSON 不导出探店时间线隐私信息。
@@ -122,6 +123,7 @@ tags:
   - 美食
   - 火锅
 hide: index
+noindex: true
 
 food:
   show: true
@@ -178,6 +180,16 @@ food:
 
 如果没有 `food.visit` 或 `food.visits`，店铺仍会显示，但不会显示探店时间线。
 
+### 短美食文章不被索引
+
+在文章 FrontMatter 顶层添加 `noindex: true`，插件会为该页面添加：
+
+```html
+<meta name="robots" content="noindex, follow">
+```
+
+这适合内容较短、希望继续在站内和美食地图展示，但不希望被搜索引擎索引的美食记录。
+
 ## 共享 JSON
 
 构建时插件会导出本站店铺到：
@@ -204,7 +216,7 @@ food:
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.4"
+    "version": "0.1.5"
   },
   "generatedAt": "2026-04-28T00:00:00.000Z",
   "coordinateSystem": "GCJ-02",

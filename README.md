@@ -15,6 +15,7 @@ This addon is designed for two use cases:
 - Read local food spots from Valaxy `usePageList()` and Markdown FrontMatter.
 - Merge multiple posts that refer to the same spot by `food.spotId`.
 - Show a local visit timeline from `food.visit` / `food.visits`.
+- Add a `robots` noindex tag for posts with `noindex: true`.
 - Export `/food-map/index.json` during build.
 - Import external food-map JSON files through `sources[]`.
 - Keep private timeline data out of the shared JSON format.
@@ -122,6 +123,7 @@ tags:
   - Food
   - Hotpot
 hide: index
+noindex: true
 
 food:
   show: true
@@ -178,6 +180,16 @@ Useful fields:
 
 If no `food.visit` or `food.visits` is provided, the spot is still shown, but no timeline is displayed.
 
+### Noindex for Short Food Posts
+
+Set top-level `noindex: true` in a post's FrontMatter to add:
+
+```html
+<meta name="robots" content="noindex, follow">
+```
+
+This is useful for short food notes that should still appear in your site and food map, but should not be indexed by search engines.
+
 ## Shared JSON
 
 During build, this addon exports local spots to:
@@ -204,7 +216,7 @@ See also: [examples/food-map-json.example.json](./examples/food-map-json.example
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.4"
+    "version": "0.1.5"
   },
   "owner": {
     "id": "demo-blog",
