@@ -1,6 +1,7 @@
 export interface FoodMapAddonOptions {
   exportJson?: boolean
   jsonPath?: string
+  articleUrlFormat?: 'route' | 'html'
   sources?: FoodMapExternalSource[]
   owner?: FoodMapOwner
   amap?: {

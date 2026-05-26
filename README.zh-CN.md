@@ -86,6 +86,7 @@ pnpm dev
 addonFoodMap({
   exportJson: true,
   jsonPath: '/food-map/index.json',
+  articleUrlFormat: 'route',
   sources: [],
   owner: {
     id: 'your-id',
@@ -104,6 +105,7 @@ addonFoodMap({
 | --- | --- | --- | --- |
 | `exportJson` | `boolean` | `true` | 构建时是否导出本站店铺 JSON。 |
 | `jsonPath` | `string` | `/food-map/index.json` | 生成的 JSON 公共路径。 |
+| `articleUrlFormat` | `'route' \| 'html'` | `'route'` | 导出的文章 URL 格式。`route` 输出 `/posts/demo` 这类普通 Valaxy 路由；`html` 输出 `/posts/demo.html` 这类扁平静态文件路径。 |
 | `sources` | `FoodMapExternalSource[]` | `[]` | 要聚合的外部美食地图 JSON。 |
 | `owner` | `FoodMapOwner` | 站点作者 | 写入导出 JSON 的作者信息。 |
 | `amap.keyEnv` | `string` | `VITE_AMAP_KEY` | 高德 Web JSAPI Key 对应的环境变量名。 |
@@ -216,7 +218,7 @@ food:
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.9"
+    "version": "0.1.10"
   },
   "generatedAt": "2026-04-28T00:00:00.000Z",
   "coordinateSystem": "GCJ-02",
@@ -236,7 +238,7 @@ food:
         "Dirty",
         "巴斯克蛋糕"
       ],
-      "articleUrl": "https://example.com/posts/shanghai-coffee/",
+      "articleUrl": "https://example.com/posts/shanghai-coffee",
       "source": {
         "id": "demo-blog",
         "name": "示例美食博客",
@@ -310,7 +312,7 @@ addonFoodMap({
 
 - 使用 `schemaVersion: 1`。
 - 如果使用高德地图展示，坐标使用 GCJ-02。
-- `articleUrl` 使用完整规范 URL。Valaxy 文章会导出为 percent-encoded 的静态 HTML URL，例如 `https://example.com/posts/%E7%A4%BA%E4%BE%8B.html`。
+- `articleUrl` 使用完整规范 URL。Valaxy 文章默认会导出无扩展名、percent-encoded 的路由 URL，例如 `https://example.com/posts/%E7%A4%BA%E4%BE%8B`。如果静态托管环境需要直连 HTML 文件，可以设置 `articleUrlFormat: 'html'`，导出 `https://example.com/posts/%E7%A4%BA%E4%BE%8B.html`。
 - 不导出时间线或私密探店字段。
 - `id` 保持稳定，方便聚合方去重、缓存或调试。
 

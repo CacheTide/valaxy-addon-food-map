@@ -41,7 +41,7 @@ export async function generateFoodMapJson(node: ValaxyNode, rawOptions: FoodMapA
     return {
       ...parsed.data,
       food: parsed.data.food,
-      path: getPageRoute(userRoot, file),
+      path: getPageRoute(userRoot, file, options.articleUrlFormat),
     } satisfies FoodMapPostLike
   }))
 
@@ -115,7 +115,7 @@ function getSiteUrl(node: ValaxyNode) {
     : ''
 }
 
-function getPageRoute(userRoot: string, file: string) {
+function getPageRoute(userRoot: string, file: string, articleUrlFormat: FoodMapAddonOptions['articleUrlFormat']) {
   const relativePath = relative(join(userRoot, 'pages'), file).replace(/\\/g, '/')
   const withoutExt = relativePath.replace(/\.md$/, '')
 
@@ -125,7 +125,9 @@ function getPageRoute(userRoot: string, file: string) {
   if (withoutExt.endsWith('/index'))
     return `/${withoutExt.slice(0, -'/index'.length)}/`
 
-  return `/${withoutExt}.html`
+  return articleUrlFormat === 'html'
+    ? `/${withoutExt}.html`
+    : `/${withoutExt}`
 }
 
 function joinPublicUrl(siteUrl: string, path: string) {

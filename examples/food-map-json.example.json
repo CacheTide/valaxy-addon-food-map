@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.9"
+    "version": "0.1.10"
   },
   "owner": {
     "id": "demo-blog",
@@ -33,7 +33,7 @@
         "Dirty",
         "Basque cheesecake"
       ],
-      "articleUrl": "https://example.com/posts/shanghai-coffee/",
+      "articleUrl": "https://example.com/posts/shanghai-coffee",
       "amapUrl": "https://uri.amap.com/marker?position=121.44418,31.20931&name=Wutong%20Road%20Coffee",
       "source": {
         "id": "demo-blog",

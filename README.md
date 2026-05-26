@@ -86,6 +86,7 @@ pnpm dev
 addonFoodMap({
   exportJson: true,
   jsonPath: '/food-map/index.json',
+  articleUrlFormat: 'route',
   sources: [],
   owner: {
     id: 'your-id',
@@ -104,6 +105,7 @@ addonFoodMap({
 | --- | --- | --- | --- |
 | `exportJson` | `boolean` | `true` | Export local food spots to JSON during build. |
 | `jsonPath` | `string` | `/food-map/index.json` | Public path for the generated JSON file. |
+| `articleUrlFormat` | `'route' \| 'html'` | `'route'` | Exported article URL format. Use `route` for normal Valaxy routes like `/posts/demo`; use `html` for flat static files like `/posts/demo.html`. |
 | `sources` | `FoodMapExternalSource[]` | `[]` | External food-map JSON sources to load in the browser. |
 | `owner` | `FoodMapOwner` | site author | Owner information written to the exported JSON. |
 | `amap.keyEnv` | `string` | `VITE_AMAP_KEY` | Environment variable name for the AMap Web JSAPI key. |
@@ -216,7 +218,7 @@ See also: [examples/food-map-json.example.json](./examples/food-map-json.example
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.9"
+    "version": "0.1.10"
   },
   "owner": {
     "id": "demo-blog",
@@ -246,7 +248,7 @@ See also: [examples/food-map-json.example.json](./examples/food-map-json.example
         "Dirty",
         "Basque cheesecake"
       ],
-      "articleUrl": "https://example.com/posts/shanghai-coffee/",
+      "articleUrl": "https://example.com/posts/shanghai-coffee",
       "amapUrl": "https://uri.amap.com/marker?position=121.44418,31.20931&name=Wutong%20Road%20Coffee",
       "source": {
         "id": "demo-blog",
@@ -325,7 +327,7 @@ Recommended rules for non-Valaxy implementations:
 
 - Use `schemaVersion: 1`.
 - Use GCJ-02 coordinates if the data will be rendered on AMap.
-- Use absolute canonical `articleUrl` values. For Valaxy posts, this addon exports percent-encoded static HTML URLs such as `https://example.com/posts/%E7%A4%BA%E4%BE%8B.html`.
+- Use absolute canonical `articleUrl` values. For Valaxy posts, this addon exports extensionless, percent-encoded route URLs by default, such as `https://example.com/posts/%E7%A4%BA%E4%BE%8B`. If your static host needs direct HTML files, set `articleUrlFormat: 'html'` to export URLs like `https://example.com/posts/%E7%A4%BA%E4%BE%8B.html`.
 - Do not export timeline or private visit fields.
 - Keep `id` stable so aggregators can deduplicate or cache data safely.
 

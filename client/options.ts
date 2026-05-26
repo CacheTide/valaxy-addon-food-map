@@ -6,6 +6,7 @@ import { computed } from 'vue'
 export const defaultFoodMapAddonOptions = {
   exportJson: true,
   jsonPath: '/food-map/index.json',
+  articleUrlFormat: 'route',
   sources: [],
   amap: {
     keyEnv: 'VITE_AMAP_KEY',
@@ -13,11 +14,12 @@ export const defaultFoodMapAddonOptions = {
   },
 } satisfies FoodMapAddonOptions
 
-export function resolveFoodMapAddonOptions(options: FoodMapAddonOptions = {}): Required<Pick<FoodMapAddonOptions, 'exportJson' | 'jsonPath' | 'sources'>> & Omit<FoodMapAddonOptions, 'exportJson' | 'jsonPath' | 'sources'> {
+export function resolveFoodMapAddonOptions(options: FoodMapAddonOptions = {}): Required<Pick<FoodMapAddonOptions, 'exportJson' | 'jsonPath' | 'articleUrlFormat' | 'sources'>> & Omit<FoodMapAddonOptions, 'exportJson' | 'jsonPath' | 'articleUrlFormat' | 'sources'> {
   return {
     ...options,
     exportJson: options.exportJson ?? defaultFoodMapAddonOptions.exportJson,
     jsonPath: options.jsonPath ?? defaultFoodMapAddonOptions.jsonPath,
+    articleUrlFormat: options.articleUrlFormat ?? defaultFoodMapAddonOptions.articleUrlFormat,
     sources: options.sources ?? [],
     amap: {
       ...defaultFoodMapAddonOptions.amap,
