@@ -1,6 +1,6 @@
 {
   "name": "valaxy-addon-food-map",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "private": false,
   "description": "Food map addon for Valaxy with shared JSON aggregation.",

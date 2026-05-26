@@ -216,7 +216,7 @@ food:
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.8"
+    "version": "0.1.9"
   },
   "generatedAt": "2026-04-28T00:00:00.000Z",
   "coordinateSystem": "GCJ-02",
@@ -277,7 +277,7 @@ food:
 | `price` | 否 | 人均价格。 |
 | `rating` | 否 | 评分。 |
 | `recommend` | 否 | 推荐项目。 |
-| `articleUrl` | 否 | 公开文章链接；外部 JSON 建议使用完整 URL。 |
+| `articleUrl` | 否 | 公开文章链接；外部 JSON 建议使用完整规范 URL，除 index 路由外不要带尾斜杠。 |
 | `amapUrl` | 否 | 高德地图链接。 |
 | `source` | 是 | 原始来源站点信息。 |
 
@@ -310,7 +310,7 @@ addonFoodMap({
 
 - 使用 `schemaVersion: 1`。
 - 如果使用高德地图展示，坐标使用 GCJ-02。
-- `articleUrl` 使用完整 URL。
+- `articleUrl` 使用完整规范 URL。Valaxy 文章会导出为 percent-encoded 的静态 HTML URL，例如 `https://example.com/posts/%E7%A4%BA%E4%BE%8B.html`。
 - 不导出时间线或私密探店字段。
 - `id` 保持稳定，方便聚合方去重、缓存或调试。
 

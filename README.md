@@ -216,7 +216,7 @@ See also: [examples/food-map-json.example.json](./examples/food-map-json.example
   "schemaVersion": 1,
   "generator": {
     "name": "valaxy-addon-food-map",
-    "version": "0.1.8"
+    "version": "0.1.9"
   },
   "owner": {
     "id": "demo-blog",
@@ -290,7 +290,7 @@ Spot fields:
 | `price` | No | Average price per person. |
 | `rating` | No | Rating number. |
 | `recommend` | No | Recommended items. |
-| `articleUrl` | No | Public article URL. External JSON should use an absolute URL. |
+| `articleUrl` | No | Public article URL. External JSON should use an absolute canonical URL without a trailing slash unless the page is an index route. |
 | `amapUrl` | No | Public AMap URL. |
 | `source` | Yes | Source metadata for the original site. |
 
@@ -325,7 +325,7 @@ Recommended rules for non-Valaxy implementations:
 
 - Use `schemaVersion: 1`.
 - Use GCJ-02 coordinates if the data will be rendered on AMap.
-- Use absolute `articleUrl` values.
+- Use absolute canonical `articleUrl` values. For Valaxy posts, this addon exports percent-encoded static HTML URLs such as `https://example.com/posts/%E7%A4%BA%E4%BE%8B.html`.
 - Do not export timeline or private visit fields.
 - Keep `id` stable so aggregators can deduplicate or cache data safely.
 

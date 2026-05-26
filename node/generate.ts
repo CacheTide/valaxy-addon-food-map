@@ -125,7 +125,7 @@ function getPageRoute(userRoot: string, file: string) {
   if (withoutExt.endsWith('/index'))
     return `/${withoutExt.slice(0, -'/index'.length)}/`
 
-  return `/${withoutExt}/`
+  return `/${withoutExt}.html`
 }
 
 function joinPublicUrl(siteUrl: string, path: string) {
@@ -138,7 +138,7 @@ function joinPublicUrl(siteUrl: string, path: string) {
 
   const base = siteUrl.replace(/\/$/, '')
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  return `${base}${normalizedPath}`
+  return new URL(normalizedPath, `${base}/`).href
 }
 
 function stripLeadingSlash(path: string) {
