@@ -69,6 +69,11 @@ const AMAP_PLUGINS = ['AMap.Scale', 'AMap.ToolBar']
 const FOCUS_ZOOM = 16
 const SINGLE_SPOT_ZOOM = 15
 const FIT_VIEW_PADDING: [number, number, number, number] = [48, 48, 48, 48]
+const LIST_INITIAL_RENDER_COUNT = 28
+const LIST_RENDER_BATCH_SIZE = 24
+const LIST_RENDER_EDGE_THRESHOLD = 240
+const MARKER_RENDER_BATCH_SIZE = 24
+const MAP_FOCUS_DELAY = 220
 const INFO_WINDOW_TARGET_Y_RATIO = 0.78
 const INFO_WINDOW_TARGET_Y_MIN = 300
 const INFO_WINDOW_TARGET_BOTTOM_GAP = 44
@@ -83,6 +88,15 @@ let amapLoadPromise: Promise<AMapNamespace> | null = null
 const markerCache = new Map<string, AMapMarker>()
 let visibleMarkerIds = new Set<string>()
 let activeInfoSpotId = ''
+let markerRenderToken = 0
+let fitViewTimer: number | null = null
+let mapInitTimer: number | null = null
+let mapControlsTimer: number | null = null
+let mapFocusFrame: number | null = null
+let mapFocusTimer: number | null = null
+let mapFocusToken = 0
+let listScrollFrame: number | null = null
+let detailFrame: number | null = null
 
 const pageList = usePageList()
 const siteConfig = useSiteConfig()
@@ -94,13 +108,17 @@ const externalLoading = ref(false)
 const mapReady = ref(false)
 const errorMessage = ref('')
 const externalErrorMessage = ref('')
-const activeSpot = ref<FoodSpot | null>(null)
+const activeSpotId = ref('')
+const showActiveDetails = ref(false)
 const mapContainer = ref<HTMLDivElement>()
 const AMapRef = shallowRef<AMapNamespace>()
 const mapRef = shallowRef<AMapMap>()
 const infoWindowRef = shallowRef<AMapInfoWindow>()
 const markerRefs = shallowRef<AMapMarker[]>([])
 const externalSpots = ref<FoodSpot[]>([])
+const visibleListCount = ref(LIST_INITIAL_RENDER_COUNT)
+const rootRef = ref<HTMLElement>()
+let hostCard: HTMLElement | null = null
 
 const amapKey = computed(() => getEnvString(import.meta.env[foodMapOptions.value.amap?.keyEnv || 'VITE_AMAP_KEY']))
 const amapSecurityJsCode = computed(() => getEnvString(import.meta.env[foodMapOptions.value.amap?.securityJsCodeEnv || 'VITE_AMAP_SECURITY_JS_CODE']))
@@ -119,6 +137,13 @@ const foodSpots = computed<FoodSpot[]>(() => {
   ])
 })
 
+const activeSpot = computed(() => {
+  if (!activeSpotId.value)
+    return null
+
+  return foodSpots.value.find(spot => spot.id === activeSpotId.value) ?? null
+})
+
 const cities = computed(() => {
   return Array.from(new Set(foodSpots.value.map(spot => spot.city))).sort((left, right) => left.localeCompare(right, 'zh-CN'))
 })
@@ -133,6 +158,8 @@ const filteredSpots = computed(() => {
       && (!selectedCategory.value || spot.category === selectedCategory.value)
   })
 })
+
+const displayedSpots = computed(() => filteredSpots.value.slice(0, visibleListCount.value))
 
 const currentMapHint = computed(() => {
   if (loading.value)
@@ -152,11 +179,14 @@ const currentMapHint = computed(() => {
 
 onMounted(async () => {
   await nextTick()
-  await fetchExternalFoodMaps()
-  await initMap()
+  bindHostCard()
+  void fetchExternalFoodMaps()
+  scheduleMapInit()
 })
 
 onBeforeUnmount(() => {
+  cancelScheduledMapWork()
+  markerRenderToken += 1
   infoWindowRef.value?.close()
   activeInfoSpotId = ''
   if (mapRef.value && markerRefs.value.length)
@@ -165,12 +195,18 @@ onBeforeUnmount(() => {
   visibleMarkerIds.clear()
   markerRefs.value = []
   mapRef.value?.destroy()
+  unbindHostCard()
 })
 
 watch(filteredSpots, () => {
-  if (activeSpot.value && !filteredSpots.value.some(spot => spot.id === activeSpot.value?.id)) {
-    activeSpot.value = null
+  resetVisibleListCount()
+
+  if (activeSpotId.value && !filteredSpots.value.some(spot => spot.id === activeSpotId.value)) {
+    activeSpotId.value = ''
+    showActiveDetails.value = false
+    cancelPendingMapFocus()
     infoWindowRef.value?.close()
+    activeInfoSpotId = ''
   }
   renderMarkers()
 }, { flush: 'post' })
@@ -221,6 +257,16 @@ async function fetchExternalFoodMaps() {
   externalLoading.value = false
 }
 
+function scheduleMapInit() {
+  if (mapInitTimer !== null)
+    window.clearTimeout(mapInitTimer)
+
+  mapInitTimer = window.setTimeout(() => {
+    mapInitTimer = null
+    void initMap()
+  }, 80)
+}
+
 async function initMap() {
   if (!mapContainer.value)
     return
@@ -250,11 +296,6 @@ async function initMap() {
       zoom: filteredSpots.value.length ? 12 : 4,
     })
 
-    if (AMap.Scale)
-      mapRef.value.addControl(new AMap.Scale())
-    if (AMap.ToolBar)
-      mapRef.value.addControl(new AMap.ToolBar({ position: 'RB' }))
-
     infoWindowRef.value = new AMap.InfoWindow({
       autoMove: false,
       closeWhenClickMap: true,
@@ -263,6 +304,7 @@ async function initMap() {
     })
     mapReady.value = true
     renderMarkers()
+    scheduleMapControls()
   }
   catch (error) {
     errorMessage.value = `高德地图加载失败：${getErrorMessage(error)}`
@@ -272,10 +314,34 @@ async function initMap() {
   }
 }
 
+function scheduleMapControls() {
+  if (!mapRef.value || !AMapRef.value)
+    return
+
+  if (mapControlsTimer !== null)
+    window.clearTimeout(mapControlsTimer)
+
+  mapControlsTimer = window.setTimeout(() => {
+    mapControlsTimer = null
+
+    const map = mapRef.value
+    const AMap = AMapRef.value
+
+    if (!map || !AMap)
+      return
+
+    if (AMap.Scale)
+      map.addControl(new AMap.Scale())
+    if (AMap.ToolBar)
+      map.addControl(new AMap.ToolBar({ position: 'RB' }))
+  }, 360)
+}
+
 function renderMarkers() {
   if (!mapReady.value || !mapRef.value || !AMapRef.value)
     return
 
+  const token = ++markerRenderToken
   pruneMarkerCache()
 
   if (!filteredSpots.value.length) {
@@ -296,16 +362,16 @@ function renderMarkers() {
   const markers = filteredSpots.value.map((spot) => {
     let marker = markerCache.get(spot.id)
 
-    if (!marker) {
-      marker = createMarker(spot)
-      markerCache.set(spot.id, marker)
-    }
+    if (!marker)
+      return null
 
     if (!visibleMarkerIds.has(spot.id))
       markersToAdd.push(marker)
 
     return marker
-  })
+  }).filter((marker): marker is AMapMarker => Boolean(marker))
+
+  const spotsToAdd = filteredSpots.value.filter(spot => !markerCache.has(spot.id))
 
   if (markersToRemove.length)
     mapRef.value.remove(markersToRemove)
@@ -315,12 +381,56 @@ function renderMarkers() {
   visibleMarkerIds = nextVisibleMarkerIds
   markerRefs.value = markers
 
-  if (activeSpot.value && filteredSpots.value.some(spot => spot.id === activeSpot.value?.id)) {
-    focusMapOnSpot(activeSpot.value, true)
+  if (spotsToAdd.length) {
+    addMarkersInBatches(spotsToAdd, token)
     return
   }
 
-  fitMapToMarkers()
+  if (activeSpot.value && filteredSpots.value.some(spot => spot.id === activeSpot.value?.id)) {
+    focusMapOnSpot(activeSpot.value)
+    return
+  }
+
+  scheduleFitMapToMarkers()
+}
+
+function addMarkersInBatches(spots: FoodSpot[], token: number, start = 0) {
+  if (!mapRef.value || token !== markerRenderToken)
+    return
+
+  const end = Math.min(start + MARKER_RENDER_BATCH_SIZE, spots.length)
+  const markersToAdd: AMapMarker[] = []
+
+  for (let index = start; index < end; index += 1) {
+    const spot = spots[index]
+    let marker = markerCache.get(spot.id)
+
+    if (!marker) {
+      marker = createMarker(spot)
+      markerCache.set(spot.id, marker)
+    }
+
+    markersToAdd.push(marker)
+  }
+
+  if (markersToAdd.length)
+    mapRef.value.add(markersToAdd)
+
+  markerRefs.value = filteredSpots.value
+    .map(spot => markerCache.get(spot.id))
+    .filter((marker): marker is AMapMarker => Boolean(marker))
+
+  if (end < spots.length) {
+    window.setTimeout(() => addMarkersInBatches(spots, token, end), 16)
+    return
+  }
+
+  if (activeSpot.value && filteredSpots.value.some(spot => spot.id === activeSpot.value?.id)) {
+    focusMapOnSpot(activeSpot.value)
+    return
+  }
+
+  scheduleFitMapToMarkers()
 }
 
 function createMarker(spot: FoodSpot) {
@@ -420,6 +530,16 @@ function cleanupAmapCallback() {
   delete window[AMAP_CALLBACK_NAME]
 }
 
+function scheduleFitMapToMarkers() {
+  if (fitViewTimer !== null)
+    window.clearTimeout(fitViewTimer)
+
+  fitViewTimer = window.setTimeout(() => {
+    fitViewTimer = null
+    fitMapToMarkers()
+  }, 120)
+}
+
 function fitMapToMarkers() {
   if (!mapRef.value || !markerRefs.value.length)
     return
@@ -436,8 +556,15 @@ function fitMapToMarkers() {
 }
 
 function focusSpot(spot: FoodSpot) {
-  activeSpot.value = spot
-  focusMapOnSpot(spot)
+  ensureSpotVisible(spot)
+  const isSameSpot = activeSpotId.value === spot.id
+
+  activeSpotId.value = spot.id
+
+  if (!isSameSpot || !showActiveDetails.value)
+    scheduleActiveDetails(spot.id)
+
+  scheduleMapFocus(spot)
 }
 
 function focusMapOnSpot(spot: FoodSpot) {
@@ -583,6 +710,129 @@ function resetFilters() {
   selectedCategory.value = ''
 }
 
+function scheduleActiveDetails(spotId: string) {
+  showActiveDetails.value = false
+
+  if (detailFrame !== null)
+    window.cancelAnimationFrame(detailFrame)
+
+  detailFrame = window.requestAnimationFrame(() => {
+    detailFrame = null
+
+    if (activeSpotId.value === spotId)
+      showActiveDetails.value = true
+  })
+}
+
+function scheduleMapFocus(spot: FoodSpot) {
+  cancelPendingMapFocus()
+
+  const token = ++mapFocusToken
+
+  mapFocusFrame = window.requestAnimationFrame(() => {
+    mapFocusFrame = null
+    mapFocusTimer = window.setTimeout(() => {
+      mapFocusTimer = null
+
+      if (token === mapFocusToken && activeSpotId.value === spot.id)
+        focusMapOnSpot(spot)
+    }, MAP_FOCUS_DELAY)
+  })
+}
+
+function cancelPendingMapFocus() {
+  mapFocusToken += 1
+
+  if (mapFocusFrame !== null) {
+    window.cancelAnimationFrame(mapFocusFrame)
+    mapFocusFrame = null
+  }
+
+  if (mapFocusTimer !== null) {
+    window.clearTimeout(mapFocusTimer)
+    mapFocusTimer = null
+  }
+}
+
+function resetVisibleListCount() {
+  visibleListCount.value = Math.min(LIST_INITIAL_RENDER_COUNT, filteredSpots.value.length || LIST_INITIAL_RENDER_COUNT)
+}
+
+function ensureSpotVisible(spot: FoodSpot) {
+  const index = filteredSpots.value.findIndex(item => item.id === spot.id)
+
+  if (index >= visibleListCount.value)
+    visibleListCount.value = Math.min(filteredSpots.value.length, index + LIST_RENDER_BATCH_SIZE)
+}
+
+function increaseVisibleListCount() {
+  if (visibleListCount.value >= filteredSpots.value.length)
+    return
+
+  visibleListCount.value = Math.min(filteredSpots.value.length, visibleListCount.value + LIST_RENDER_BATCH_SIZE)
+}
+
+function handleListScroll(event: Event) {
+  if (visibleListCount.value >= filteredSpots.value.length)
+    return
+
+  const target = event.currentTarget as HTMLElement | null
+
+  if (!target)
+    return
+
+  if (listScrollFrame !== null)
+    return
+
+  listScrollFrame = window.requestAnimationFrame(() => {
+    listScrollFrame = null
+    checkListScrollPosition(target)
+  })
+}
+
+function checkListScrollPosition(target: HTMLElement) {
+  const nearVerticalEnd = target.scrollTop + target.clientHeight >= target.scrollHeight - LIST_RENDER_EDGE_THRESHOLD
+  const nearHorizontalEnd = target.scrollLeft + target.clientWidth >= target.scrollWidth - LIST_RENDER_EDGE_THRESHOLD
+
+  if (nearVerticalEnd || nearHorizontalEnd)
+    increaseVisibleListCount()
+}
+
+function bindHostCard() {
+  hostCard = rootRef.value?.closest<HTMLElement>('.yun-card') ?? null
+  hostCard?.classList.add('food-map-host-card')
+}
+
+function unbindHostCard() {
+  hostCard?.classList.remove('food-map-host-card')
+  hostCard = null
+}
+
+function cancelScheduledMapWork() {
+  cancelPendingMapFocus()
+
+  if (mapInitTimer !== null) {
+    window.clearTimeout(mapInitTimer)
+    mapInitTimer = null
+  }
+  if (mapControlsTimer !== null) {
+    window.clearTimeout(mapControlsTimer)
+    mapControlsTimer = null
+  }
+  if (fitViewTimer !== null) {
+    window.clearTimeout(fitViewTimer)
+    fitViewTimer = null
+  }
+  if (listScrollFrame !== null) {
+    window.cancelAnimationFrame(listScrollFrame)
+    listScrollFrame = null
+  }
+  if (detailFrame !== null) {
+    window.cancelAnimationFrame(detailFrame)
+    detailFrame = null
+  }
+}
+
 function isEnabledExternalSource(source: FoodMapExternalSource) {
   return source.enabled !== false
     && Boolean(source.id?.trim())
@@ -656,7 +906,7 @@ function resolveHref(value: string) {
 </script>
 
 <template>
-  <section class="food-map" aria-label="美食地图">
+  <section ref="rootRef" class="food-map" aria-label="美食地图">
     <div class="food-map__filters yun-card" aria-label="美食地图筛选">
       <label>
         <span>城市</span>
@@ -698,12 +948,13 @@ function resolveHref(value: string) {
     </div>
 
     <div class="food-map__body yun-card">
-      <aside class="food-map__list" aria-label="店铺列表">
+      <aside class="food-map__list" aria-label="店铺列表" @scroll.passive="handleListScroll">
         <button
-          v-for="spot in filteredSpots"
+          v-for="spot in displayedSpots"
           :key="spot.id"
+          v-memo="[spot.id, activeSpotId === spot.id]"
           class="food-map__list-item"
-          :class="{ 'is-active': activeSpot?.id === spot.id }"
+          :class="{ 'is-active': activeSpotId === spot.id }"
           type="button"
           @click="focusSpot(spot)"
         >
@@ -770,7 +1021,7 @@ function resolveHref(value: string) {
         </div>
       </dl>
 
-      <section v-if="activeSpot.visits.length" class="food-map__timeline" aria-label="探店时间线">
+      <section v-if="showActiveDetails && activeSpot.visits.length" class="food-map__timeline" aria-label="探店时间线">
         <div class="food-map__timeline-header">
           <h3>探店时间线</h3>
           <span>{{ activeSpot.visits.length }} 次</span>
@@ -837,7 +1088,7 @@ function resolveHref(value: string) {
 </template>
 
 <style scoped>
-:global(.yun-card:has(.food-map)) {
+:global(.yun-card.food-map-host-card) {
   border-color: transparent !important;
   background: transparent !important;
   box-shadow: none !important;
@@ -847,17 +1098,17 @@ function resolveHref(value: string) {
   transform: none !important;
 }
 
-:global(.yun-card:has(.food-map):hover) {
+:global(.yun-card.food-map-host-card:hover) {
   box-shadow: none !important;
   transform: none !important;
 }
 
-:global(.yun-card:has(.food-map) > .mt-8) {
+:global(.yun-card.food-map-host-card > .mt-8) {
   display: none !important;
   margin-top: 0 !important;
 }
 
-:global(.yun-card:has(.food-map) > div:last-child) {
+:global(.yun-card.food-map-host-card > div:last-child) {
   padding-top: 0 !important;
   padding-inline: 0 !important;
   padding-bottom: 0 !important;
@@ -1433,11 +1684,11 @@ function resolveHref(value: string) {
 }
 
 @media (max-width: 560px) {
-  :global(.yun-card:has(.food-map)) {
+  :global(.yun-card.food-map-host-card) {
     margin-inline: 0 !important;
   }
 
-  :global(.yun-card:has(.food-map) > div:last-child) {
+  :global(.yun-card.food-map-host-card > div:last-child) {
     padding-inline: 0 !important;
   }
 
