@@ -22,8 +22,16 @@ interface AMapNamespace {
   Map: new (container: HTMLElement, options: Record<string, unknown>) => AMapMap
   Marker: new (options: Record<string, unknown>) => AMapMarker
   InfoWindow: new (options: Record<string, unknown>) => AMapInfoWindow
+  Pixel: new (x: number, y: number) => AMapPixel
   Scale?: new () => unknown
   ToolBar?: new (options?: Record<string, unknown>) => unknown
+}
+
+interface AMapPixel {
+  getX?: () => number
+  getY?: () => number
+  x?: number
+  y?: number
 }
 
 interface AMapMap {
@@ -32,6 +40,7 @@ interface AMapMap {
   addControl: (control: unknown) => void
   getCenter: () => { lng: number, lat: number }
   getZoom: () => number
+  lngLatToContainer?: (position: [number, number]) => AMapPixel
   resize?: () => void
   setCenter: (center: [number, number], immediately?: boolean, duration?: number) => void
   setFitView: (
@@ -60,12 +69,20 @@ const AMAP_PLUGINS = ['AMap.Scale', 'AMap.ToolBar']
 const FOCUS_ZOOM = 16
 const SINGLE_SPOT_ZOOM = 15
 const FIT_VIEW_PADDING: [number, number, number, number] = [48, 48, 48, 48]
-const FOCUS_ANIMATION_DURATION = 560
-const RECENTER_AFTER_OPEN_DELAY = 120
+const INFO_WINDOW_TARGET_Y_RATIO = 0.78
+const INFO_WINDOW_TARGET_Y_MIN = 300
+const INFO_WINDOW_TARGET_BOTTOM_GAP = 44
+const INFO_WINDOW_TARGET_TOLERANCE = 20
+const MAP_VIEW_EDGE_PADDING = 36
+const MAP_LIST_MOVE_DURATION = 280
+const MAP_TILE_SIZE = 256
+const MAX_MERCATOR_LAT = 85.05112878
+const FOCUS_ZOOM_TOLERANCE = 0.1
 
 let amapLoadPromise: Promise<AMapNamespace> | null = null
-let moveAnimationFrame: number | null = null
-let recenterTimer: number | null = null
+const markerCache = new Map<string, AMapMarker>()
+let visibleMarkerIds = new Set<string>()
+let activeInfoSpotId = ''
 
 const pageList = usePageList()
 const siteConfig = useSiteConfig()
@@ -140,10 +157,12 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  clearPendingRecenter()
   infoWindowRef.value?.close()
+  activeInfoSpotId = ''
   if (mapRef.value && markerRefs.value.length)
     mapRef.value.remove(markerRefs.value)
+  markerCache.clear()
+  visibleMarkerIds.clear()
   markerRefs.value = []
   mapRef.value?.destroy()
 })
@@ -240,6 +259,7 @@ async function initMap() {
       autoMove: false,
       closeWhenClickMap: true,
       isCustom: false,
+      offset: new AMap.Pixel(0, -14),
     })
     mapReady.value = true
     renderMarkers()
@@ -256,36 +276,85 @@ function renderMarkers() {
   if (!mapReady.value || !mapRef.value || !AMapRef.value)
     return
 
-  if (markerRefs.value.length) {
-    mapRef.value.remove(markerRefs.value)
+  pruneMarkerCache()
+
+  if (!filteredSpots.value.length) {
+    if (markerRefs.value.length)
+      mapRef.value.remove(markerRefs.value)
+    visibleMarkerIds = new Set()
     markerRefs.value = []
+    return
   }
 
-  if (!filteredSpots.value.length)
-    return
+  const nextVisibleMarkerIds = new Set(filteredSpots.value.map(spot => spot.id))
+  const markersToRemove = Array.from(visibleMarkerIds)
+    .filter(id => !nextVisibleMarkerIds.has(id))
+    .map(id => markerCache.get(id))
+    .filter((marker): marker is AMapMarker => Boolean(marker))
+  const markersToAdd: AMapMarker[] = []
 
-  const AMap = AMapRef.value
   const markers = filteredSpots.value.map((spot) => {
-    const marker = new AMap.Marker({
-      anchor: 'bottom-center',
-      content: getMarkerContent(spot),
-      position: [spot.lng, spot.lat],
-      title: spot.name,
-    })
+    let marker = markerCache.get(spot.id)
 
-    marker.on('click', () => focusSpot(spot, false))
+    if (!marker) {
+      marker = createMarker(spot)
+      markerCache.set(spot.id, marker)
+    }
+
+    if (!visibleMarkerIds.has(spot.id))
+      markersToAdd.push(marker)
+
     return marker
   })
 
-  mapRef.value.add(markers)
+  if (markersToRemove.length)
+    mapRef.value.remove(markersToRemove)
+  if (markersToAdd.length)
+    mapRef.value.add(markersToAdd)
+
+  visibleMarkerIds = nextVisibleMarkerIds
   markerRefs.value = markers
 
   if (activeSpot.value && filteredSpots.value.some(spot => spot.id === activeSpot.value?.id)) {
-    focusMapOnSpot(activeSpot.value, true, false)
+    focusMapOnSpot(activeSpot.value, true)
     return
   }
 
   fitMapToMarkers()
+}
+
+function createMarker(spot: FoodSpot) {
+  const AMap = AMapRef.value
+
+  if (!AMap)
+    throw new Error('AMap is not initialized.')
+
+  const marker = new AMap.Marker({
+    anchor: 'bottom-center',
+    content: getMarkerContent(spot),
+    position: [spot.lng, spot.lat],
+    title: spot.name,
+  })
+
+  marker.on('click', () => focusSpot(spot))
+  return marker
+}
+
+function pruneMarkerCache() {
+  const spotIds = new Set(foodSpots.value.map(spot => spot.id))
+  const markersToRemove: AMapMarker[] = []
+
+  for (const [id, marker] of markerCache) {
+    if (spotIds.has(id))
+      continue
+
+    markerCache.delete(id)
+    visibleMarkerIds.delete(id)
+    markersToRemove.push(marker)
+  }
+
+  if (markersToRemove.length)
+    mapRef.value?.remove(markersToRemove)
 }
 
 function loadAMapScript(key: string) {
@@ -366,12 +435,12 @@ function fitMapToMarkers() {
   mapRef.value.setFitView(markerRefs.value, true, FIT_VIEW_PADDING, SINGLE_SPOT_ZOOM)
 }
 
-function focusSpot(spot: FoodSpot, shouldZoom = true) {
+function focusSpot(spot: FoodSpot) {
   activeSpot.value = spot
-  focusMapOnSpot(spot, shouldZoom, true)
+  focusMapOnSpot(spot)
 }
 
-function focusMapOnSpot(spot: FoodSpot, shouldZoom = true, shouldAnimate = true) {
+function focusMapOnSpot(spot: FoodSpot) {
   const map = mapRef.value
   const infoWindow = infoWindowRef.value
 
@@ -379,107 +448,134 @@ function focusMapOnSpot(spot: FoodSpot, shouldZoom = true, shouldAnimate = true)
     return
 
   const position: [number, number] = [spot.lng, spot.lat]
-  clearPendingRecenter()
-  map.resize?.()
+  const shouldRefreshInfoWindow = activeInfoSpotId !== spot.id
 
-  if (shouldAnimate)
-    animateMapToPosition(position, shouldZoom)
-  else
-    moveMapToPosition(position, shouldZoom)
+  if (shouldRefreshInfoWindow) {
+    infoWindow.close()
+    infoWindow.setContent(getInfoWindowContent(spot))
+    activeInfoSpotId = spot.id
+  }
 
-  infoWindow.close()
-  infoWindow.setContent(getInfoWindowContent(spot))
-  infoWindow.open(map, position)
-  scheduleRecenter(position, shouldZoom, shouldAnimate)
+  moveMapForFocus(position)
+
+  if (shouldRefreshInfoWindow || !isPositionAtInfoWindowTarget(position))
+    infoWindow.open(map, position)
 }
 
 function moveMapToPosition(
   position: [number, number],
-  shouldZoom: boolean,
   immediately = true,
+  duration?: number,
 ) {
   const map = mapRef.value
 
   if (!map)
     return
 
-  if (shouldZoom)
-    map.setZoomAndCenter(FOCUS_ZOOM, position, immediately)
-  else
-    map.setCenter(position, immediately)
+  map.setZoomAndCenter(FOCUS_ZOOM, position, immediately, duration)
 }
 
-function animateMapToPosition(position: [number, number], shouldZoom: boolean) {
-  const map = mapRef.value
-
-  if (!map)
+function moveMapForFocus(position: [number, number]) {
+  if (isPositionAtInfoWindowTarget(position))
     return
 
-  const center = map.getCenter()
-  const start = {
-    lng: center.lng,
-    lat: center.lat,
-    zoom: map.getZoom(),
-  }
-  const targetZoom = shouldZoom ? FOCUS_ZOOM : start.zoom
-  const startedAt = performance.now()
+  const isVisible = isPositionInMapView(position)
+  const targetCenter = getInfoWindowFriendlyCenter(position, FOCUS_ZOOM)
+  const shouldJump = !isVisible
 
-  const tick = (timestamp: number) => {
-    const progress = Math.min((timestamp - startedAt) / FOCUS_ANIMATION_DURATION, 1)
-    const easedProgress = easeOutCubic(progress)
-    const nextCenter: [number, number] = [
-      interpolate(start.lng, position[0], easedProgress),
-      interpolate(start.lat, position[1], easedProgress),
-    ]
-    const nextZoom = interpolate(start.zoom, targetZoom, easedProgress)
-
-    if (shouldZoom)
-      map.setZoomAndCenter(nextZoom, nextCenter, true)
-    else
-      map.setCenter(nextCenter, true)
-
-    if (progress < 1) {
-      moveAnimationFrame = window.requestAnimationFrame(tick)
-      return
-    }
-
-    moveAnimationFrame = null
-    moveMapToPosition(position, shouldZoom)
-  }
-
-  moveAnimationFrame = window.requestAnimationFrame(tick)
+  moveMapToPosition(targetCenter, shouldJump, shouldJump ? undefined : MAP_LIST_MOVE_DURATION)
 }
 
-function scheduleRecenter(position: [number, number], shouldZoom: boolean, shouldAnimate: boolean) {
-  const delay = shouldAnimate
-    ? FOCUS_ANIMATION_DURATION + RECENTER_AFTER_OPEN_DELAY
-    : RECENTER_AFTER_OPEN_DELAY
+function getInfoWindowFriendlyCenter(position: [number, number], zoom = mapRef.value?.getZoom() || FOCUS_ZOOM) {
+  const container = mapContainer.value
 
-  recenterTimer = window.setTimeout(() => {
-    recenterTimer = null
-    mapRef.value?.resize?.()
-    moveMapToPosition(position, shouldZoom)
-  }, delay)
-}
+  if (!container)
+    return position
 
-function clearPendingRecenter() {
-  if (moveAnimationFrame !== null) {
-    window.cancelAnimationFrame(moveAnimationFrame)
-    moveAnimationFrame = null
+  const spotWorldPixel = lngLatToWorldPixel(position, zoom)
+  const targetPixel = {
+    x: container.clientWidth / 2,
+    y: getInfoWindowTargetY(container.clientHeight),
+  }
+  const centerWorldPixel = {
+    x: spotWorldPixel.x + container.clientWidth / 2 - targetPixel.x,
+    y: spotWorldPixel.y + container.clientHeight / 2 - targetPixel.y,
   }
 
-  if (recenterTimer !== null) {
-    window.clearTimeout(recenterTimer)
-    recenterTimer = null
+  return worldPixelToLngLat(centerWorldPixel, zoom)
+}
+
+function getInfoWindowTargetY(containerHeight: number) {
+  return Math.min(
+    Math.max(containerHeight * INFO_WINDOW_TARGET_Y_RATIO, INFO_WINDOW_TARGET_Y_MIN),
+    Math.max(containerHeight - INFO_WINDOW_TARGET_BOTTOM_GAP, INFO_WINDOW_TARGET_Y_MIN),
+  )
+}
+
+function isPositionInMapView(position: [number, number], padding = MAP_VIEW_EDGE_PADDING) {
+  const pixel = getPositionPixel(position)
+  const container = mapContainer.value
+
+  if (!pixel || !container)
+    return false
+
+  const x = getPixelX(pixel)
+  const y = getPixelY(pixel)
+
+  return x >= padding
+    && x <= container.clientWidth - padding
+    && y >= padding
+    && y <= container.clientHeight - padding
+}
+
+function isPositionAtInfoWindowTarget(position: [number, number]) {
+  const pixel = getPositionPixel(position)
+  const container = mapContainer.value
+  const map = mapRef.value
+
+  if (!pixel || !container || !map)
+    return false
+
+  return Math.abs(map.getZoom() - FOCUS_ZOOM) <= FOCUS_ZOOM_TOLERANCE
+    && Math.abs(getPixelX(pixel) - container.clientWidth / 2) <= INFO_WINDOW_TARGET_TOLERANCE
+    && Math.abs(getPixelY(pixel) - getInfoWindowTargetY(container.clientHeight)) <= INFO_WINDOW_TARGET_TOLERANCE
+}
+
+function getPositionPixel(position: [number, number]) {
+  return mapRef.value?.lngLatToContainer?.(position)
+}
+
+function getPixelX(pixel: AMapPixel) {
+  return typeof pixel.getX === 'function' ? pixel.getX() : pixel.x || 0
+}
+
+function getPixelY(pixel: AMapPixel) {
+  return typeof pixel.getY === 'function' ? pixel.getY() : pixel.y || 0
+}
+
+function lngLatToWorldPixel(position: [number, number], zoom: number) {
+  const scale = MAP_TILE_SIZE * 2 ** zoom
+  const lng = position[0]
+  const lat = clamp(position[1], -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)
+  const sinLat = Math.sin(lat * Math.PI / 180)
+
+  return {
+    x: (lng + 180) / 360 * scale,
+    y: (0.5 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * scale,
   }
 }
 
-function interpolate(start: number, end: number, progress: number) {
-  return start + (end - start) * progress
+function worldPixelToLngLat(pixel: { x: number, y: number }, zoom: number): [number, number] {
+  const scale = MAP_TILE_SIZE * 2 ** zoom
+  const lng = pixel.x / scale * 360 - 180
+  const mercator = Math.PI - 2 * Math.PI * pixel.y / scale
+  const lat = Math.atan(Math.sinh(mercator)) * 180 / Math.PI
+
+  return [lng, clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT)]
 }
 
-function easeOutCubic(progress: number) {
-  return 1 - (1 - progress) ** 3
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }
 
 function resetFilters() {
@@ -515,28 +611,24 @@ function getMapCenter(): [number, number] {
 }
 
 function getMarkerContent(spot: FoodSpot) {
-  const tone = getMarkerTone(spot)
-
   return [
-    `<button class="food-map-marker ${tone}" type="button" aria-label="${escapeHtml(spot.name)}">`,
-    '<span class="food-map-marker__dot" aria-hidden="true"></span>',
-    '</button>',
+    `<button class="food-map-marker" type="button" aria-label="${escapeHtml(spot.name)}"></button>`,
   ].join('')
 }
 
 function getInfoWindowContent(spot: FoodSpot) {
-  const details = [
-    ['城市', spot.city],
-    ['地址', spot.address],
-    ['分类', spot.category],
-    ['来源', spot.source.type === 'external' ? spot.source.name : ''],
-    ['探店', spot.visits.length ? `${spot.visits.length} 次` : ''],
-    ['人均', formatPrice(spot.price)],
-    ['评分', formatRating(spot.rating)],
-  ].filter((entry): entry is [string, string] => Boolean(entry[1]))
-
-  const recommend = spot.recommend.length
-    ? `<div class="food-map-info-window__recommends">${spot.recommend.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+  const meta = [
+    spot.city,
+    spot.category,
+    formatPrice(spot.price),
+    formatRating(spot.rating),
+    spot.source.type === 'external' ? spot.source.name : '',
+  ].filter(Boolean)
+  const metaHtml = meta.length
+    ? `<div class="food-map-info-window__meta">${meta.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+    : ''
+  const address = spot.address
+    ? `<p class="food-map-info-window__address">${escapeHtml(spot.address)}</p>`
     : ''
   const href = resolveHref(spot.articlePath)
   const externalAttrs = isExternalLink(spot.articlePath) ? ' target="_blank" rel="noopener noreferrer"' : ''
@@ -544,22 +636,13 @@ function getInfoWindowContent(spot: FoodSpot) {
   return [
     '<article class="food-map-info-window">',
     `<h3>${escapeHtml(spot.name)}</h3>`,
-    '<dl>',
-    ...details.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`),
-    '</dl>',
-    recommend,
+    metaHtml,
+    address,
     `<a class="food-map-info-window__link" href="${escapeHtml(href)}"${externalAttrs}>查看探店文章</a>`,
     '</article>',
   ].join('')
 }
 
-function getMarkerTone(spot: FoodSpot) {
-  if (hasNumber(spot.rating) && spot.rating >= 4.5)
-    return 'is-loved'
-  if (hasNumber(spot.rating) && spot.rating >= 4)
-    return 'is-good'
-  return ''
-}
 function resolveHref(value: string) {
   if (!value || value === '#')
     return '#'
@@ -781,6 +864,8 @@ function resolveHref(value: string) {
 }
 
 .food-map {
+  --food-map-accent-blue: var(--va-c-primary, #1e9bff);
+  --food-map-accent-blue-shadow: color-mix(in oklab, var(--va-c-primary, #1e9bff) 42%, transparent);
   --food-map-border: rgba(0, 0, 0, 0.03);
   --food-map-inner-radius: var(--radius-detail-inner, 16px);
   --food-map-blur: blur(16px) saturate(140%);
@@ -889,7 +974,6 @@ function resolveHref(value: string) {
   border: 0;
   border-radius: 999px;
   padding: 0.65rem 1rem;
-  background: var(--va-c-primary, #f97316);
   color: #fff;
   cursor: pointer;
   font-weight: 700;
@@ -897,9 +981,21 @@ function resolveHref(value: string) {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.food-map__reset:hover,
-.food-map__action-link:hover {
+.food-map__reset {
+  background: var(--va-c-primary, #f97316);
+}
+
+.food-map__action-link {
+  background: var(--va-c-primary, #1e9bff);
+}
+
+.food-map__reset:hover {
   box-shadow: 0 10px 24px -14px var(--va-c-primary, #f97316);
+  transform: translateY(-1px);
+}
+
+.food-map__action-link:hover {
+  box-shadow: 0 10px 24px -14px var(--food-map-accent-blue-shadow);
   transform: translateY(-1px);
 }
 
@@ -908,6 +1004,7 @@ function resolveHref(value: string) {
   grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   height: clamp(540px, 68vh, 720px);
   overflow: hidden;
+  contain: layout paint style;
 }
 
 .food-map__list {
@@ -920,7 +1017,9 @@ function resolveHref(value: string) {
   padding: 1rem;
   background: color-mix(in oklab, var(--va-c-bg-soft, rgba(148, 163, 184, 0.12)) 28%, transparent);
   -webkit-overflow-scrolling: touch;
+  contain: layout paint style;
   overscroll-behavior: contain;
+  will-change: scroll-position;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--va-c-primary, #f97316) 35%, transparent) transparent;
 }
@@ -933,7 +1032,7 @@ function resolveHref(value: string) {
   border-radius: var(--food-map-inner-radius);
   padding: 0.85rem;
   background: color-mix(in oklab, var(--va-c-bg, #fff) 64%, transparent);
-  box-shadow: 0 10px 26px -22px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   color: inherit;
   cursor: pointer;
   text-align: left;
@@ -943,15 +1042,16 @@ function resolveHref(value: string) {
   isolation: auto;
   transform: none;
   will-change: auto;
+  contain: layout style;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
 
 .food-map__list-item:hover,
 .food-map__list-item.is-active {
   border-color: color-mix(in oklab, var(--va-c-primary, #f97316) 60%, transparent);
   background: color-mix(in oklab, var(--va-c-primary, #f97316) 10%, transparent);
-  box-shadow: 0 14px 28px -22px var(--va-c-primary, #f97316);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), inset 0 0 0 1px color-mix(in oklab, var(--va-c-primary, #f97316) 12%, transparent);
   transform: none;
 }
 
@@ -995,11 +1095,15 @@ function resolveHref(value: string) {
   min-width: 0;
   height: 100%;
   background: transparent;
+  contain: layout paint style;
+  isolation: isolate;
 }
 
 .food-map__map {
   width: 100%;
   height: 100%;
+  contain: strict;
+  touch-action: pan-x pan-y;
 }
 
 .food-map__map-hint {
@@ -1024,8 +1128,9 @@ function resolveHref(value: string) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 0.9rem 1rem;
-  padding: 1.1rem 1.25rem;
+  gap: 0.72rem 0.9rem;
+  padding: 0.95rem 1.1rem;
+  contain: layout paint style;
 }
 
 .food-map__active-card h2 {
@@ -1037,7 +1142,7 @@ function resolveHref(value: string) {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem 1rem;
+  gap: 0.48rem 0.82rem;
   margin: 0;
 }
 
@@ -1047,13 +1152,15 @@ function resolveHref(value: string) {
 
 .food-map__active-card dt {
   color: var(--va-c-text-2, #64748b);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
 }
 
 .food-map__active-card dd {
-  margin: 0.18rem 0 0;
+  margin: 0.1rem 0 0;
   color: var(--va-c-text-1, #0f172a);
   font-weight: 700;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
@@ -1160,40 +1267,29 @@ function resolveHref(value: string) {
   appearance: none;
   display: grid;
   place-items: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  border: 2px solid #fff;
-  border-radius: 999px 999px 999px 0;
-  background: linear-gradient(135deg, #f97316, #fb923c);
-  box-shadow: 0 10px 18px -10px rgba(15, 23, 42, 0.65);
+  width: 1.28rem;
+  height: 1.28rem;
+  border: 2.5px solid rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+  background: var(--food-map-accent-blue);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 0 0 1px var(--food-map-accent-blue-shadow),
+    0 6px 14px rgba(15, 23, 42, 0.22);
   color: #fff;
   cursor: pointer;
   padding: 0;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-  transform: rotate(-45deg);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  transform: translateZ(0);
 }
 
 :global(.food-map-marker:hover) {
-  box-shadow: 0 14px 24px -12px rgba(15, 23, 42, 0.8);
-  transform: rotate(-45deg) scale(1.08);
-}
-
-:global(.food-map-marker.is-good) {
-  background: linear-gradient(135deg, #059669, #34d399);
-}
-
-:global(.food-map-marker.is-loved) {
-  background: linear-gradient(135deg, #e11d48, #fb7185);
-}
-
-:global(.food-map-marker__dot) {
-  display: block;
-  width: 0.72rem;
-  height: 0.72rem;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.08);
-  transform: rotate(45deg);
+  border-color: #fff;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 0 0 2px var(--food-map-accent-blue-shadow),
+    0 8px 18px rgba(15, 23, 42, 0.26);
+  transform: translateZ(0) scale(1.08);
 }
 
 :global(.amap-info-contentContainer .amap-info-content) {
@@ -1201,10 +1297,11 @@ function resolveHref(value: string) {
   border: 1px solid color-mix(in oklab, var(--va-c-divider, #e5e7eb) 65%, transparent) !important;
   border-radius: 1.15rem !important;
   padding: 0 !important;
-  background: color-mix(in oklab, var(--va-c-bg, #fff) 78%, transparent) !important;
+  background: color-mix(in oklab, var(--va-c-bg, #fff) 92%, transparent) !important;
   box-shadow: 0 20px 48px -26px rgba(15, 23, 42, 0.5) !important;
-  backdrop-filter: blur(18px) saturate(145%);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  contain: layout paint style;
 }
 
 :global(.amap-info-contentContainer .amap-info-sharp) {
@@ -1220,11 +1317,11 @@ function resolveHref(value: string) {
 
 :global(.food-map-info-window) {
   display: grid;
-  gap: 0.7rem;
-  width: min(78vw, 22rem);
-  padding: 1rem 1.05rem 1.05rem;
+  gap: 0.42rem;
+  width: min(76vw, 18.5rem);
+  padding: 0.78rem 0.86rem 0.82rem;
   color: var(--va-c-text-1, #1f2937);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
   text-align: left;
 }
 
@@ -1232,70 +1329,36 @@ function resolveHref(value: string) {
   margin: 0;
   padding-right: 1.5rem;
   color: var(--va-c-text-1, #111827);
-  font-size: 1.08rem;
-  line-height: 1.45;
+  font-size: 0.98rem;
+  line-height: 1.3;
 }
 
-:global(.food-map-info-window dl) {
-  display: grid;
-  gap: 0.5rem;
+:global(.food-map-info-window__meta) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
   margin: 0;
 }
 
-:global(.food-map-info-window dl div) {
-  display: grid;
-  grid-template-columns: 3.25rem minmax(0, 1fr);
-  align-items: baseline;
-  column-gap: 0.7rem;
-  min-width: 0;
-}
-
-:global(.food-map-info-window dt) {
+:global(.food-map-info-window__meta span) {
   display: inline-flex;
-  align-items: baseline;
-  align-self: baseline;
-  justify-content: flex-end;
-  gap: 0.08rem;
-  color: var(--va-c-text-2, #6b7280);
-  font-family: inherit;
-  font-size: 0.9rem;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  background: color-mix(in oklab, #38bdf8 13%, transparent);
+  color: var(--va-c-text-2, #64748b);
+  font-size: 0.76rem;
   font-weight: 700;
-  letter-spacing: 0;
-  line-height: 1.55;
-  text-align: right;
-  text-align-last: auto;
+  line-height: 1.25;
   white-space: nowrap;
 }
 
-:global(.food-map-info-window dt::after) {
-  content: '：';
-  position: static;
-  flex: 0 0 auto;
-  line-height: inherit;
-  text-align-last: auto;
-}
-
-:global(.food-map-info-window dd) {
-  align-self: baseline;
+:global(.food-map-info-window__address) {
   margin: 0;
-  padding-top: 0;
-  line-height: 1.55;
+  color: var(--va-c-text-2, #64748b);
+  font-size: 0.82rem;
+  line-height: 1.38;
   overflow-wrap: anywhere;
-  text-align: left !important;
-}
-
-:global(.food-map-info-window__recommends) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.65rem;
-}
-
-:global(.food-map-info-window__recommends span) {
-  border-radius: 999px;
-  padding: 0.18rem 0.5rem;
-  background: color-mix(in oklab, var(--va-c-primary, #f97316) 14%, transparent);
-  color: var(--va-c-primary, #c2410c);
 }
 
 :global(.food-map-info-window__link) {
@@ -1303,11 +1366,16 @@ function resolveHref(value: string) {
   justify-self: start;
   margin-top: 0.1rem;
   border-radius: 999px;
-  padding: 0.5rem 0.85rem;
-  background: var(--va-c-primary, #f97316);
-  color: #fff;
+  padding: 0.42rem 0.72rem;
+  background: var(--va-c-primary, #1e9bff) !important;
+  color: #fff !important;
+  font-size: 0.82rem;
   font-weight: 700;
   text-decoration: none;
+}
+
+:global(.food-map-info-window__link:hover) {
+  box-shadow: 0 8px 18px var(--food-map-accent-blue-shadow, color-mix(in oklab, var(--va-c-primary, #1e9bff) 42%, transparent));
 }
 
 @media (max-width: 860px) {
@@ -1384,12 +1452,11 @@ function resolveHref(value: string) {
     gap: 0.6rem;
     padding: 0.75rem;
     scroll-padding-inline: 0.75rem;
-    scroll-snap-type: x proximity;
+    scroll-snap-type: none;
   }
 
   .food-map__filters label {
     flex: 0 0 min(42vw, 10rem);
-    scroll-snap-align: start;
   }
 
   .food-map__filters select {
@@ -1401,12 +1468,10 @@ function resolveHref(value: string) {
     min-height: 2.75rem;
     margin-left: 0;
     padding: 0.5rem 0.75rem;
-    scroll-snap-align: start;
   }
 
   .food-map__reset {
     flex: 0 0 auto;
-    scroll-snap-align: start;
   }
 
   .food-map__map-card,
@@ -1464,19 +1529,18 @@ function resolveHref(value: string) {
   }
 
   :global(.food-map-info-window) {
-    width: min(calc(100vw - 2rem), 20rem);
-    max-height: min(70svh, 30rem);
+    width: min(calc(100vw - 2rem), 18.5rem);
+    max-height: min(68svh, 26rem);
     overflow-y: auto;
-    padding: 0.9rem 0.95rem;
+    padding: 0.78rem 0.82rem;
   }
 
-  :global(.food-map-info-window dl div) {
-    grid-template-columns: 3.2rem minmax(0, 1fr);
-    column-gap: 0.6rem;
+  :global(.food-map-info-window__meta) {
+    gap: 0.22rem;
   }
 
   :global(.food-map-info-window__link) {
-    min-height: 2.5rem;
+    min-height: 2.2rem;
     align-items: center;
   }
 }
