@@ -976,7 +976,7 @@ function resolveHref(value: string) {
       </aside>
 
       <div class="food-map__map-card">
-        <div ref="mapContainer" class="food-map__map" />
+        <div ref="mapContainer" class="food-map__map" :class="{ 'food-map__map--ready': mapReady }" />
         <div v-if="currentMapHint" class="food-map__map-hint" role="status">
           {{ currentMapHint }}
         </div>
@@ -1355,6 +1355,9 @@ function resolveHref(value: string) {
   width: 100%;
   height: 100%;
   contain: strict;
+}
+
+.food-map__map--ready {
   touch-action: none;
 }
 
