@@ -440,8 +440,9 @@ function createMarker(spot: FoodSpot) {
     throw new Error('AMap is not initialized.')
 
   const marker = new AMap.Marker({
-    anchor: 'bottom-center',
+    anchor: 'center',
     content: getMarkerContent(spot),
+    offset: new AMap.Pixel(0, 0),
     position: [spot.lng, spot.lat],
     title: spot.name,
   })
@@ -975,7 +976,7 @@ function resolveHref(value: string) {
       </aside>
 
       <div class="food-map__map-card">
-        <div ref="mapContainer" class="food-map__map" />
+        <div ref="mapContainer" class="food-map__map" :class="{ 'food-map__map--ready': mapReady }" />
         <div v-if="currentMapHint" class="food-map__map-hint" role="status">
           {{ currentMapHint }}
         </div>
@@ -1354,7 +1355,10 @@ function resolveHref(value: string) {
   width: 100%;
   height: 100%;
   contain: strict;
-  touch-action: pan-x pan-y;
+}
+
+.food-map__map--ready {
+  touch-action: none;
 }
 
 .food-map__map-hint {
@@ -1518,8 +1522,9 @@ function resolveHref(value: string) {
   appearance: none;
   display: grid;
   place-items: center;
-  width: 1.28rem;
-  height: 1.28rem;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
   border: 2.5px solid rgba(255, 255, 255, 0.96);
   border-radius: 999px;
   background: var(--food-map-accent-blue);
@@ -1530,8 +1535,7 @@ function resolveHref(value: string) {
   color: #fff;
   cursor: pointer;
   padding: 0;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
-  transform: translateZ(0);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 :global(.food-map-marker:hover) {
@@ -1540,7 +1544,6 @@ function resolveHref(value: string) {
     inset 0 0 0 1px rgba(255, 255, 255, 0.2),
     0 0 0 2px var(--food-map-accent-blue-shadow),
     0 8px 18px rgba(15, 23, 42, 0.26);
-  transform: translateZ(0) scale(1.08);
 }
 
 :global(.amap-info-contentContainer .amap-info-content) {
